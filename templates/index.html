@@ -1,6 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Backtest — VSA + Wyckoff Bot{% endblock %}
 {% block content %}
+<div class="history-layout">
+<aside class="history" id="history">
+  <div class="history-head">
+    <h3>Run history</h3>
+    <button type="button" class="ghost" id="history-refresh" title="Refresh">↻</button>
+  </div>
+  <input type="search" id="history-search" placeholder="Filter by symbol / name…">
+  <div id="history-list" class="history-list"><div class="empty">Loading…</div></div>
+</aside>
+<div class="history-main">
 
 <section class="controls">
   <form id="backtest-form">
@@ -179,9 +189,51 @@
 </section>
 
 <section id="report" class="report hidden">
-  <h2>Backtest Report</h2>
+  <div class="report-head">
+    <h2 id="report-title">Backtest Report</h2>
+    <span id="report-saved" class="muted"></span>
+  </div>
   <div class="report-grid" id="report-grid"></div>
+
+  <form id="report-filters" class="report-filters">
+    <div class="field"><label>Entry date from (UTC)</label><input type="date" id="f_date_from"></div>
+    <div class="field"><label>Entry date to (UTC)</label><input type="date" id="f_date_to"></div>
+    <div class="field"><label>Time from (UTC)</label><input type="time" id="f_time_from"></div>
+    <div class="field"><label>Time to (UTC)</label><input type="time" id="f_time_to"></div>
+    <div class="field">
+      <label>Sessions</label>
+      <div class="chips">
+        {% for key, s in sessions.items() %}
+        <label class="chip"><input type="checkbox" name="f_session" value="{{ key }}"> {{ s.label }} <span class="muted">{{ '%02d' % s.start }}–{{ '%02d' % s.end }}</span></label>
+        {% endfor %}
+        <label class="chip"><input type="checkbox" name="f_session" value="off_hours"> Off hours</label>
+      </div>
+    </div>
+    <div class="field">
+      <label>Weekdays</label>
+      <div class="chips">
+        {% for wd in ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"] %}
+        <label class="chip"><input type="checkbox" name="f_weekday" value="{{ wd }}"> {{ wd }}</label>
+        {% endfor %}
+      </div>
+    </div>
+    <button type="submit">Apply filters</button>
+    <button type="button" class="ghost" id="f_reset">Reset</button>
+  </form>
+  <p class="muted small">Trades are grouped by entry time in UTC. Sessions overlap (London/New York 12:00–16:00, Asian/London 07:00–09:00), so a trade in an overlap counts toward both sessions.</p>
+
+  <div id="filtered-summary" class="report-grid"></div>
+
+  <div class="tabs" id="report-tabs">
+    <button type="button" class="tab active" data-tab="session">By session</button>
+    <button type="button" class="tab" data-tab="weekday">By weekday</button>
+    <button type="button" class="tab" data-tab="date">By day</button>
+    <button type="button" class="tab" data-tab="trades">Trades</button>
+  </div>
+  <div id="report-table" class="table-wrap"></div>
 </section>
+</div>
+</div>
 
 <script src="/static/js/app.js?v={{ asset_version }}"></script>
 {% endblock %}

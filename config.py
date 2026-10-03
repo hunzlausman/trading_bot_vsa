@@ -17,14 +17,35 @@ Strategy overview
   sizing logic as the original bot). Risk management (partials, trailing, breakeven)
   is identical to the original.
 """
+import os
 from pydantic import BaseModel, Field
 from typing import Optional, List
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # --- MT5 connection ---
 MT5_LOGIN: Optional[int] = None
 MT5_PASSWORD: Optional[str] = None
 MT5_SERVER: Optional[str] = None
 MT5_PATH: Optional[str] = None
+
+# --- MongoDB (backtest run history) ---
+# Set MONGODB_URI in a .env file next to main.py to point at a remote/authenticated server.
+MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
+MONGODB_DB: str = os.getenv("MONGODB_DB", "vsa_wyckoff_bot")
+
+# --- Trading sessions (UTC hours, [start, end) — overlaps are intentional) ---
+# A trade is attributed to every session that is open at its entry time, so a
+# trade opened at 13:00 UTC counts for both London and New York.
+TRADING_SESSIONS = {
+    "asian":    {"label": "Asian",    "start": 0,  "end": 9},
+    "london":   {"label": "London",   "start": 7,  "end": 16},
+    "new_york": {"label": "New York", "start": 12, "end": 21},
+}
+# MT5 bar times are in the broker's server time. Hours to subtract to get UTC
+# (e.g. 2 for a UTC+2 server). Exness ("m" suffix symbols) runs on UTC, so 0.
+BROKER_UTC_OFFSET_HOURS: float = float(os.getenv("BROKER_UTC_OFFSET_HOURS", "0"))
 
 TIMEFRAME_LABELS = ["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN1"]
 DEFAULT_TIMEFRAME = "M5"

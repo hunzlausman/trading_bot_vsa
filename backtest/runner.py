@@ -266,6 +266,9 @@ async def run_backtest(df: pd.DataFrame, params: StrategyParams,
 
         if playback_ms_per_bar:
             await asyncio.sleep(playback_ms_per_bar / 1000.0)
+        else:
+            # Yield to the event loop so websocket keepalive pings still get answered
+            await asyncio.sleep(0)
 
     # Force-close open positions at end of data
     if open_positions:

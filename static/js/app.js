@@ -120,7 +120,6 @@ function renderReport(r) {
     </div>
   `).join('');
   document.getElementById('report').classList.remove('hidden');
-  document.getElementById('report').scrollIntoView({ behavior: 'smooth' });
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -338,9 +337,19 @@ form.addEventListener('submit', async (e) => {
       equitySeries.update({ time: t.exit_time, value: equity });
 
     } else if (evt.type === 'report') {
+      currentRun = {
+        id: evt.run_id || null,
+        trades: evt.segmented ? evt.segmented.trades : evt.trades,
+      };
       renderReport(evt);
+      document.getElementById('report-title').textContent = 'Backtest Report';
+      showSavedState(evt.run_id ? 'Saved to history' : (evt.db_error || 'Not saved'));
+      resetFilters();
+      renderSegmented(evt.segmented);
+      document.getElementById('report').scrollIntoView({ behavior: 'smooth' });
       statusMsg.textContent = 'Backtest complete.';
       runBtn.disabled = false;
+      if (evt.run_id) { activeRunId = evt.run_id; loadHistory(); }
 
     } else if (evt.type === 'error') {
       statusMsg.textContent = `Error: ${evt.message}`;
@@ -353,3 +362,241 @@ form.addEventListener('submit', async (e) => {
     runBtn.disabled = false;
   };
 });
+
+// ══ Segregated report (session / weekday / day) + filters ═════════════════
+let currentRun = null;   // { id, trades }
+let currentSegmented = null;
+let activeTab = 'session';
+
+function esc(v) {
+  return String(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function pnlCell(v) { return `<td class="${v > 0 ? 'pos' : v < 0 ? 'neg' : ''}">${fmtMoney(v)}</td>`; }
+function pf(v) { return v === null || v === undefined ? '∞' : v; }
+
+function showSavedState(text) {
+  document.getElementById('report-saved').textContent = text || '';
+}
+
+const METRIC_HEAD = '<th>Trades</th><th>Wins</th><th>Losses</th><th>Win %</th><th>Net PnL</th>' +
+  '<th>Profit factor</th><th>Avg win</th><th>Avg loss</th><th>Expectancy</th><th>Max DD</th>';
+function metricCells(m) {
+  return `<td>${m.total_trades}</td><td>${m.wins}</td><td>${m.losses}</td><td>${m.win_rate}%</td>` +
+    pnlCell(m.net_pnl) + `<td>${pf(m.profit_factor)}</td>` + pnlCell(m.avg_win) + pnlCell(m.avg_loss) +
+    pnlCell(m.expectancy) + `<td class="neg">${m.max_drawdown.toFixed(2)}</td>`;
+}
+
+function renderTable() {
+  const wrap = document.getElementById('report-table');
+  const r = currentSegmented;
+  if (!r) { wrap.innerHTML = ''; return; }
+  let html = '';
+  if (activeTab === 'session') {
+    html = `<table><thead><tr><th>Session</th><th>Hours (UTC)</th>${METRIC_HEAD}</tr></thead><tbody>` +
+      r.by_session.map(s => `<tr><td>${esc(s.label)}</td><td>${esc(s.hours_utc)}</td>${metricCells(s)}</tr>`).join('') +
+      '</tbody></table>';
+  } else if (activeTab === 'weekday') {
+    html = `<table><thead><tr><th>Weekday</th>${METRIC_HEAD}</tr></thead><tbody>` +
+      r.by_weekday.map(d => `<tr><td>${d.key}</td>${metricCells(d)}</tr>`).join('') + '</tbody></table>';
+  } else if (activeTab === 'date') {
+    html = `<table><thead><tr><th>Date (UTC)</th><th>Day</th>${METRIC_HEAD}</tr></thead><tbody>` +
+      r.by_date.map(d => `<tr><td>${d.key}</td><td>${d.weekday}</td>${metricCells(d)}</tr>`).join('') + '</tbody></table>';
+  } else {
+    const labels = Object.fromEntries(Object.entries(r.sessions_config).map(([k, v]) => [k, v.label]));
+    labels.off_hours = 'Off hours';
+    html = '<table><thead><tr><th>#</th><th>Entry (UTC)</th><th>Day</th><th>Session</th><th>Dir</th>' +
+      '<th>Entry</th><th>Exit</th><th>Exit reason</th><th>PnL</th><th>Signal</th></tr></thead><tbody>' +
+      r.trades.map(t => `<tr><td>${t.id}</td><td>${t.entry_date} ${t.entry_hhmm}</td><td>${t.weekday}</td>` +
+        `<td>${t.sessions.map(k => esc(labels[k] || k)).join(' + ')}</td><td>${t.direction.toUpperCase()}</td>` +
+        `<td>${t.entry_price.toFixed(5)}</td><td>${t.exit_price.toFixed(5)}</td><td>${esc(t.exit_reason)}</td>` +
+        pnlCell(t.pnl) + `<td style="text-align:left">${esc(t.reason)}</td></tr>`).join('') + '</tbody></table>';
+  }
+  const rows = { session: r.by_session, weekday: r.by_weekday, date: r.by_date, trades: r.trades }[activeTab];
+  wrap.innerHTML = rows.length ? html : '<p class="muted">No trades match these filters.</p>';
+}
+
+function renderSegmented(seg) {
+  currentSegmented = seg;
+  const box = document.getElementById('filtered-summary');
+  if (!seg) { box.innerHTML = ''; renderTable(); return; }
+  const m = seg.overall;
+  const filtered = Object.keys(seg.filters || {}).length > 0;
+  const items = [
+    [filtered ? 'Filtered trades' : 'Trades', m.total_trades, ''],
+    ['Net PnL', fmtMoney(m.net_pnl), m.net_pnl >= 0 ? 'pos' : 'neg'],
+    ['Win Rate', m.win_rate + '%', ''],
+    ['Profit Factor', pf(m.profit_factor), ''],
+    ['Expectancy', fmtMoney(m.expectancy), m.expectancy >= 0 ? 'pos' : 'neg'],
+    ['Max DD (closed trades)', m.max_drawdown.toFixed(2), 'neg'],
+  ];
+  box.innerHTML = items.map(([label, value, cls]) => `
+    <div class="report-item"><div class="label">${label}</div><div class="value ${cls}">${value}</div></div>`).join('');
+  renderTable();
+}
+
+document.getElementById('report-tabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('.tab');
+  if (!btn) return;
+  activeTab = btn.dataset.tab;
+  document.querySelectorAll('#report-tabs .tab').forEach(b => b.classList.toggle('active', b === btn));
+  renderTable();
+});
+
+function readFilters() {
+  const val = id => document.getElementById(id).value || null;
+  const checked = name => [...document.querySelectorAll(`input[name=${name}]:checked`)].map(i => i.value);
+  const sessions = checked('f_session');
+  const weekdays = checked('f_weekday');
+  return {
+    date_from: val('f_date_from'), date_to: val('f_date_to'),
+    time_from: val('f_time_from'), time_to: val('f_time_to'),
+    sessions: sessions.length ? sessions : null,
+    weekdays: weekdays.length ? weekdays : null,
+  };
+}
+
+function resetFilters() {
+  document.getElementById('report-filters').reset();
+}
+
+async function applyFilters() {
+  if (!currentRun) return;
+  const body = currentRun.id ? { run_id: currentRun.id } : { trades: currentRun.trades };
+  body.filters = readFilters();
+  try {
+    const res = await fetch('/api/report', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Report failed');
+    renderSegmented(data);
+  } catch (err) {
+    document.getElementById('report-table').innerHTML = `<p class="neg">${esc(err.message)}</p>`;
+  }
+}
+
+document.getElementById('report-filters').addEventListener('submit', (e) => { e.preventDefault(); applyFilters(); });
+document.getElementById('f_reset').addEventListener('click', () => { resetFilters(); applyFilters(); });
+
+// ══ Run history sidebar (MongoDB) ════════════════════════════════════════
+let historyRuns = [];
+let activeRunId = null;
+
+function renderHistory() {
+  const list = document.getElementById('history-list');
+  const q = document.getElementById('history-search').value.trim().toLowerCase();
+  const runs = historyRuns.filter(r => !q || `${r.name} ${r.symbol} ${r.timeframe}`.toLowerCase().includes(q));
+  if (!runs.length) {
+    list.innerHTML = `<div class="empty">${historyRuns.length ? 'No matching runs.' : 'No saved runs yet. Run a backtest to start your history.'}</div>`;
+    return;
+  }
+  list.innerHTML = runs.map(r => {
+    const m = r.metrics || {};
+    const when = new Date(r.created_at).toLocaleString();
+    return `<div class="run-item ${r.id === activeRunId ? 'active' : ''}" data-id="${r.id}">
+      <div class="name">${esc(r.name)}</div>
+      <div class="actions">
+        <button type="button" data-act="rename" title="Rename">✎</button>
+        <button type="button" data-act="delete" title="Delete">✕</button>
+      </div>
+      <div class="meta"><span>${m.total_trades ?? 0} trades · ${m.win_rate ?? 0}%</span>
+        <span class="${(m.net_pnl || 0) >= 0 ? 'pos' : 'neg'}">${fmtMoney(m.net_pnl || 0)}</span></div>
+      <div class="meta"><span>${esc(when)}</span></div>
+    </div>`;
+  }).join('');
+}
+
+async function loadHistory() {
+  const list = document.getElementById('history-list');
+  try {
+    const res = await fetch('/api/runs');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Could not load history');
+    historyRuns = data.runs;
+    renderHistory();
+  } catch (err) {
+    list.innerHTML = `<div class="empty neg">${esc(err.message)}</div>`;
+  }
+}
+
+function writeStrategyParams(p) {
+  Object.entries(p).forEach(([key, value]) => {
+    const el = document.getElementById(key);
+    if (!el) return;
+    if (el.type === 'checkbox') el.checked = !!value;
+    else el.value = value === null ? 0 : value;
+  });
+  const levels = p.partial_tp_levels || [];
+  const set = (id, v) => { document.getElementById(id).value = v; };
+  if (levels[0]) { set('partial1_r', levels[0].r_multiple); set('partial1_pct', levels[0].percent); }
+  set('partial2_r', levels[1] ? levels[1].r_multiple : 2.0);
+  set('partial2_pct', levels[1] ? levels[1].percent : 0);
+}
+
+async function openRun(id) {
+  statusMsg.textContent = 'Loading saved run…';
+  try {
+    const res = await fetch(`/api/runs/${id}`);
+    const run = await res.json();
+    if (!res.ok) throw new Error(run.detail || 'Could not load run');
+    activeRunId = id;
+    renderHistory();
+
+    document.getElementById('symbol').value = run.symbol;
+    document.getElementById('timeframe').value = run.timeframe;
+    document.getElementById('date_from').value = run.date_from;
+    document.getElementById('date_to').value = run.date_to;
+    writeStrategyParams(run.params);
+    document.querySelector('.strategy-params').open = true;
+
+    // Candles aren't stored; show the equity curve and trade log from the saved run.
+    candleSeries.setData([]);
+    markers = [];
+    candleSeries.setMarkers(markers);
+    equitySeries.setData((run.equity_curve || []).map(p => ({ time: p.time, value: p.equity })));
+    equityChart.timeScale().fitContent();
+    document.getElementById('trade-log').innerHTML = '';
+    run.trades.forEach(addTradeLogRow);
+    setOpenTradePanel(null);
+    document.getElementById('equity-val').textContent = run.metrics.ending_balance.toFixed(2);
+    document.getElementById('open-pnl-val').textContent = '—';
+
+    currentRun = { id, trades: run.trades };
+    renderReport({ ...run.metrics,
+      net_pnl: Math.round((run.metrics.ending_balance - run.metrics.starting_balance) * 100) / 100 });
+    document.getElementById('report-title').textContent = run.name;
+    showSavedState(`Saved ${new Date(run.created_at).toLocaleString()}`);
+    resetFilters();
+    await applyFilters();
+    statusMsg.textContent = 'Loaded saved run. Press Run Backtest to replay it with candles.';
+    document.getElementById('report').scrollIntoView({ behavior: 'smooth' });
+  } catch (err) {
+    statusMsg.textContent = `Error: ${err.message}`;
+  }
+}
+
+document.getElementById('history-list').addEventListener('click', async (e) => {
+  const item = e.target.closest('.run-item');
+  if (!item) return;
+  const id = item.dataset.id;
+  const act = e.target.closest('button')?.dataset.act;
+  if (act === 'rename') {
+    const run = historyRuns.find(r => r.id === id);
+    const name = prompt('Rename run', run ? run.name : '');
+    if (!name || !name.trim()) return;
+    await fetch(`/api/runs/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim() }) });
+    if (id === activeRunId) document.getElementById('report-title').textContent = name.trim();
+    loadHistory();
+  } else if (act === 'delete') {
+    if (!confirm('Delete this saved run? This cannot be undone.')) return;
+    await fetch(`/api/runs/${id}`, { method: 'DELETE' });
+    if (id === activeRunId) activeRunId = null;
+    loadHistory();
+  } else {
+    openRun(id);
+  }
+});
+document.getElementById('history-search').addEventListener('input', renderHistory);
+document.getElementById('history-refresh').addEventListener('click', loadHistory);
+loadHistory();

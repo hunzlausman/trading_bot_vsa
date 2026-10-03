@@ -7,3 +7,4 @@ numpy==1.26.4
 pandas==2.2.2
 MetaTrader5==5.0.45
 python-dotenv==1.0.1
+pymongo==4.11.2

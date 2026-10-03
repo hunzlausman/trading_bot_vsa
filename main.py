@@ -11,6 +11,10 @@ Routes (identical to original bot):
   POST /api/live/start           start live signal/trading loop
   POST /api/live/stop            stop it
   WS   /ws/live/{session_id}     stream live events
+  GET  /api/runs                 saved backtest runs (MongoDB) for the sidebar
+  GET  /api/runs/{run_id}        one saved run (params, metrics, trades, report)
+  PATCH/DELETE /api/runs/{run_id} rename / delete a saved run
+  POST /api/report               segregated report (session/weekday/day) with filters
 
 Broker: MetaTrader5 only (Windows + MT5 terminal required).
 """
@@ -22,13 +26,16 @@ import traceback
 from typing import Dict, Any, Optional
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
+from pydantic import BaseModel
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 import config
 import mt5_client
-from models import BacktestRequest, LiveStartRequest
+import db
+import reporting
+from models import BacktestRequest, LiveStartRequest, ReportRequest
 from backtest.runner import run_backtest
 from strategy import engine as strat_engine
 from strategy import indicators as ind_mod
@@ -53,6 +60,7 @@ async def dashboard(request: Request):
         "default_timeframe": config.DEFAULT_TIMEFRAME,
         "asset_version": ASSET_VERSION,
         "bot_name": "VSA Bank Levels + Wyckoff Method",
+        "sessions": config.TRADING_SESSIONS,
     })
 
 
@@ -116,6 +124,7 @@ async def start_backtest(req: BacktestRequest):
         "df": df, "params": req.strategy, "pip_size": pip_size,
         "pip_value_per_lot": pip_value_per_lot,
         "symbol": req.symbol, "timeframe": req.timeframe,
+        "date_from": req.date_from, "date_to": req.date_to, "bar_count": len(df),
     }
     return {"session_id": session_id, "bar_count": len(df),
             "params_used": req.strategy.model_dump()}
@@ -134,6 +143,8 @@ async def ws_backtest(websocket: WebSocket, session_id: str):
             session["df"], session["params"], session["pip_size"],
             session["pip_value_per_lot"], session["params"].playback_ms_per_bar,
         ):
+            if event.get("type") == "report":
+                event = await _finalize_report(session, event)
             await websocket.send_json(event)
         await websocket.close()
     except WebSocketDisconnect:
@@ -147,6 +158,79 @@ async def ws_backtest(websocket: WebSocket, session_id: str):
             pass
     finally:
         BACKTEST_SESSIONS.pop(session_id, None)
+
+
+async def _finalize_report(session: Dict[str, Any], event: Dict[str, Any]) -> Dict[str, Any]:
+    """Attach the session/day breakdown and persist the run to MongoDB."""
+    segmented = reporting.build_report(event["trades"])
+    event["segmented"] = segmented
+    try:
+        event["run_id"] = await asyncio.to_thread(
+            db.save_run, session, session["params"].model_dump(), event, segmented)
+    except Exception as e:
+        traceback.print_exc()
+        event["db_error"] = f"Run not saved to MongoDB: {e}"
+    return event
+
+
+# ─────────────────────────────────────────────── saved runs / reports ──
+
+class RenameRequest(BaseModel):
+    name: str
+
+
+async def _db_call(fn, *args):
+    try:
+        return await asyncio.to_thread(fn, *args)
+    except db.DBError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"MongoDB unavailable: {e}")
+
+
+@app.get("/api/runs")
+async def api_list_runs(limit: int = 100):
+    return {"runs": await _db_call(db.list_runs, limit)}
+
+
+@app.get("/api/runs/{run_id}")
+async def api_get_run(run_id: str):
+    run = await _db_call(db.get_run, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return run
+
+
+@app.patch("/api/runs/{run_id}")
+async def api_rename_run(run_id: str, req: RenameRequest):
+    if not await _db_call(db.rename_run, run_id, req.name.strip()):
+        raise HTTPException(status_code=404, detail="Run not found")
+    return {"ok": True}
+
+
+@app.delete("/api/runs/{run_id}")
+async def api_delete_run(run_id: str):
+    if not await _db_call(db.delete_run, run_id):
+        raise HTTPException(status_code=404, detail="Run not found")
+    return {"ok": True}
+
+
+@app.post("/api/report")
+async def api_report(req: ReportRequest):
+    """Recompute the segregated report for a set of trades under the given filters.
+    Pass either run_id (a saved run) or the trades themselves."""
+    trades = req.trades
+    if req.run_id:
+        run = await _db_call(db.get_run, req.run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="Run not found")
+        trades = run["trades"]
+    if trades is None:
+        raise HTTPException(status_code=400, detail="Provide run_id or trades")
+    try:
+        return reporting.build_report(trades, **req.filters.model_dump())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Bad filter: {e}")
 
 
 # ──────────────────────────────────────────────────────── live ──

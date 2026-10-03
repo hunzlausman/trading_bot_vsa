@@ -62,3 +62,18 @@ class LiveStartRequest(BaseModel):
     volume: float = 0.10
     strategy: StrategyParams = StrategyParams()
     dry_run: bool = True
+
+
+class ReportFilters(BaseModel):
+    date_from: Optional[str] = None   # "YYYY-MM-DD", UTC entry date, inclusive
+    date_to: Optional[str] = None
+    time_from: Optional[str] = None   # "HH:MM", UTC entry time, inclusive
+    time_to: Optional[str] = None
+    sessions: Optional[List[str]] = None   # keys of config.TRADING_SESSIONS / "off_hours"
+    weekdays: Optional[List[str]] = None   # "Mon" … "Sun"
+
+
+class ReportRequest(BaseModel):
+    run_id: Optional[str] = None
+    trades: Optional[List[dict]] = None
+    filters: ReportFilters = ReportFilters()
