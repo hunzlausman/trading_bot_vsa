@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Secrets / local config
+.env
+.env.*
+*.pem
+*.key
+
+# Local scratch scripts that contain hard-coded credentials (not part of the bot)
+test.py
+test_digitalocean.py
+test.html
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

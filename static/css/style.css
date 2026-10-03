@@ -1,0 +1,81 @@
+:root {
+  --bg: #0e1117;
+  --panel: #161b22;
+  --border: #262c36;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --green: #26a69a;
+  --red: #ef5350;
+  --accent: #4f8cff;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg); color: var(--text);
+}
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--panel);
+}
+.brand { font-weight: 700; font-size: 18px; }
+.brand span { color: var(--muted); font-weight: 400; }
+nav a { color: var(--text); text-decoration: none; margin-left: 20px; padding: 6px 10px; border-radius: 6px; }
+nav a:hover { background: var(--border); }
+
+main { padding: 20px 24px 60px; max-width: 1500px; margin: 0 auto; }
+
+.controls { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 18px; }
+#backtest-form, #live-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; }
+.field { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 4px; }
+.field input, .field select { background: #0d1117; border: 1px solid var(--border); color: var(--text); padding: 7px 9px; border-radius: 6px; min-width: 110px; }
+.field.checkbox { flex-direction: row; align-items: center; gap: 6px; }
+.field.checkbox label { display: flex; align-items: center; gap: 6px; color: var(--text); font-size: 13px; }
+
+.strategy-params { flex-basis: 100%; }
+.strategy-params summary { cursor: pointer; color: var(--accent); margin-bottom: 10px; }
+.params-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; padding-top: 6px; }
+
+button {
+  background: var(--accent); color: white; border: none; padding: 9px 18px;
+  border-radius: 6px; font-weight: 600; cursor: pointer;
+}
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button#stop-btn { background: var(--red); margin-left: 8px; }
+#status-msg { color: var(--muted); font-size: 13px; margin-left: 10px; }
+
+.warn { color: #d29922; font-size: 13px; margin: 10px 0 0; }
+
+.workspace { display: grid; grid-template-columns: 1fr 320px; gap: 18px; }
+.chart-col { display: flex; flex-direction: column; gap: 14px; }
+.chart { height: 480px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+.chart.equity { height: 160px; }
+
+.side-col { display: flex; flex-direction: column; gap: 14px; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+.card.grow { flex: 1; display: flex; flex-direction: column; min-height: 300px; }
+.card h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+
+.stat-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; }
+.stat-row strong { font-variant-numeric: tabular-nums; }
+
+#open-trade-panel.empty { color: var(--muted); font-size: 13px; }
+.open-trade { font-size: 13px; line-height: 1.7; }
+.open-trade .dir-buy { color: var(--green); font-weight: 700; }
+.open-trade .dir-sell { color: var(--red); font-weight: 700; }
+
+.trade-log { flex: 1; overflow-y: auto; max-height: 480px; display: flex; flex-direction: column; gap: 6px; }
+.trade-row { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 12.5px; }
+.trade-row .head { display: flex; justify-content: space-between; font-weight: 600; }
+.trade-row .pnl-pos { color: var(--green); }
+.trade-row .pnl-neg { color: var(--red); }
+.trade-row .meta { color: var(--muted); margin-top: 2px; }
+.trade-row.note { padding: 6px 10px; opacity: 0.85; }
+
+.report { margin-top: 22px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
+.report.hidden { display: none; }
+.report-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; margin-top: 12px; }
+.report-item { background: #0d1117; border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.report-item .label { color: var(--muted); font-size: 12px; }
+.report-item .value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+.report-item .value.pos { color: var(--green); }
+.report-item .value.neg { color: var(--red); }

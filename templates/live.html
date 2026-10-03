@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Live — VSA + Wyckoff Bot{% endblock %}
+{% block content %}
+
+<section class="controls">
+  <form id="live-form">
+    <div class="field">
+      <label>Symbol</label>
+      <input list="symbol-list" id="symbol" name="symbol" value="{{ default_symbol }}" autocomplete="off" required>
+      <datalist id="symbol-list"></datalist>
+    </div>
+    <div class="field">
+      <label>Timeframe</label>
+      <select id="timeframe" name="timeframe">
+        {% for tf in timeframes %}
+        <option value="{{ tf }}" {% if tf == default_timeframe %}selected{% endif %}>{{ tf }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>Volume (lots)</label>
+      <input type="number" id="volume" value="0.01" step="0.01" min="0.01">
+    </div>
+    <div class="field checkbox">
+      <label><input type="checkbox" id="dry_run" checked> Dry run (no real orders)</label>
+    </div>
+    <button type="submit" id="start-btn">▶ Start</button>
+    <button type="button" id="stop-btn" disabled>■ Stop</button>
+    <span id="status-msg"></span>
+  </form>
+  <p class="warn">⚠️ Uncheck "Dry run" only once you've validated this strategy in backtest and are
+     using an account you're comfortable trading with. Live orders are sent for real via MetaTrader5.</p>
+  <p class="warn" style="color: var(--muted)">This page uses the strategy's default parameters (sweep setups,
+     ATR-based SL/TP, partial booking, breakeven + trailing all on). Tune those on the Backtest page first —
+     once you're happy, either hardcode the tuned values in <code>config.py</code>'s <code>StrategyParams</code>
+     defaults, or extend this page's payload to pass a custom <code>strategy</code> object the same way the
+     backtest page does.</p>
+</section>
+
+<section class="workspace">
+  <div class="chart-col">
+    <div id="chart" class="chart"></div>
+  </div>
+  <aside class="side-col">
+    <div class="card grow">
+      <h3>Live Feed</h3>
+      <div id="live-log" class="trade-log"></div>
+    </div>
+  </aside>
+</section>
+
+<script src="/static/js/live.js?v={{ asset_version }}"></script>
+{% endblock %}

@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}Backtest — VSA + Wyckoff Bot{% endblock %}
+{% block content %}
+
+<section class="controls">
+  <form id="backtest-form">
+    <div class="field">
+      <label>Symbol</label>
+      <input list="symbol-list" id="symbol" name="symbol" value="{{ default_symbol }}" autocomplete="off" required>
+      <datalist id="symbol-list"></datalist>
+    </div>
+    <div class="field">
+      <label>Timeframe</label>
+      <select id="timeframe" name="timeframe">
+        {% for tf in timeframes %}
+        <option value="{{ tf }}" {% if tf == default_timeframe %}selected{% endif %}>{{ tf }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label>From</label>
+      <input type="date" id="date_from" name="date_from" required>
+    </div>
+    <div class="field">
+      <label>To</label>
+      <input type="date" id="date_to" name="date_to" required>
+    </div>
+
+    <details class="strategy-params">
+      <summary>Strategy parameters</summary>
+
+      <!-- ── Wyckoff Bank Levels ── -->
+      <div class="params-grid">
+        <div class="field" style="flex-basis:100%"><strong style="color:var(--accent)">Wyckoff Bank Levels</strong></div>
+        <div class="field"><label>Swing lookback (bars)</label><input type="number" id="swing_lookback" value="5" min="2" max="500"></div>
+        <div class="field"><label>Level lookback (bars)</label><input type="number" id="level_lookback_bars" value="300" min="50" max="5000"></div>
+        <div class="field checkbox"><label><input type="checkbox" id="use_prev_day_levels" checked> Prev day H/L</label></div>
+        <div class="field checkbox"><label><input type="checkbox" id="use_prev_week_levels" checked> Prev week H/L</label></div>
+        <div class="field checkbox"><label><input type="checkbox" id="use_hvn_levels" checked> High Volume Nodes (HVN)</label></div>
+        <div class="field"><label>HVN bins</label><input type="number" id="hvn_bins" value="20" min="5" max="100"></div>
+        <div class="field"><label>HVN threshold (× avg)</label><input type="number" id="hvn_volume_threshold" value="1.5" step="0.1" min="0.5"></div>
+        <div class="field checkbox"><label><input type="checkbox" id="use_trading_range" checked> Wyckoff trading range (Creek / Ice)</label></div>
+        <div class="field"><label>Range lookback (bars)</label><input type="number" id="range_lookback" value="60" min="20" max="500"></div>
+        <div class="field"><label>Range min width (ATR ×)</label><input type="number" id="range_min_atr_width" value="2.0" step="0.1" min="0.5"></div>
+        <div class="field"><label>Range max width (ATR ×)</label><input type="number" id="range_max_atr_width" value="10.0" step="0.5" min="1.0"></div>
+        <div class="field"><label>Zone cluster radius (ATR ×)</label><input type="number" id="zone_cluster_atr_multiplier" value="0.6" step="0.1" min="0.1"></div>
+        <div class="field"><label>Zone max width (ATR ×)</label><input type="number" id="zone_max_width_atr_multiplier" value="2.5" step="0.1" min="0.1"></div>
+        <div class="field"><label>Zone "at" tolerance (ATR ×)</label><input type="number" id="zone_tolerance_atr_multiplier" value="0.4" step="0.1" min="0.1"></div>
+        <div class="field"><label>Min zone touches</label><input type="number" id="min_zone_touches" value="1" min="1" max="10"></div>
+      </div>
+
+      <!-- ── VSA Thresholds ── -->
+      <div class="params-grid">
+        <div class="field" style="flex-basis:100%"><strong style="color:var(--accent)">VSA Spread / Volume Thresholds</strong></div>
+        <div class="field"><label>Wide spread (ATR ×)</label><input type="number" id="vsa_wide_spread_mult" value="1.5" step="0.1" min="0.5"></div>
+        <div class="field"><label>Narrow spread (ATR ×)</label><input type="number" id="vsa_narrow_spread_mult" value="0.5" step="0.1" min="0.1"></div>
+        <div class="field"><label>High volume (avg ×)</label><input type="number" id="vsa_high_volume_mult" value="1.5" step="0.1" min="0.5"></div>
+        <div class="field"><label>Ultra-high volume (avg ×)</label><input type="number" id="vsa_ultra_high_volume_mult" value="2.0" step="0.1" min="1.0"></div>
+        <div class="field"><label>Low volume (avg ×)</label><input type="number" id="vsa_low_volume_mult" value="0.7" step="0.05" min="0.1"></div>
+        <div class="field"><label>Volume avg period (bars)</label><input type="number" id="volume_avg_period" value="20" min="5" max="200"></div>
+      </div>
+
+      <!-- ── VSA Signals ── -->
+      <div class="params-grid">
+        <div class="field" style="flex-basis:100%"><strong style="color:var(--accent)">VSA / Wyckoff Signals</strong></div>
+        <div class="field checkbox"><label><input type="checkbox" id="enable_spring" checked>
+          Spring — wick below Ice/support, close back above → <em>BUY</em></label></div>
+        <div class="field"><label>Spring min penetration (ATR ×)</label><input type="number" id="spring_min_penetration_atr" value="0.1" step="0.05" min="0.01"></div>
+        <div class="field checkbox"><label><input type="checkbox" id="enable_upthrust" checked>
+          Upthrust — wick above Creek/resistance, close back below → <em>SELL</em></label></div>
+        <div class="field"><label>Upthrust min penetration (ATR ×)</label><input type="number" id="upthrust_min_penetration_atr" value="0.1" step="0.05" min="0.01"></div>
+        <div class="field checkbox"><label><input type="checkbox" id="enable_no_supply" checked>
+          No Supply — narrow-spread low-volume down bar near support → <em>BUY</em></label></div>
+        <div class="field checkbox"><label><input type="checkbox" id="enable_no_demand" checked>
+          No Demand — narrow-spread low-volume up bar near resistance → <em>SELL</em></label></div>
+        <div class="field checkbox"><label><input type="checkbox" id="enable_selling_climax" checked>
+          Selling Climax / Stopping Volume — wide down bar, ultra-high vol, close near top → <em>BUY</em></label></div>
+        <div class="field checkbox"><label><input type="checkbox" id="enable_buying_climax" checked>
+          Buying Climax — wide up bar, ultra-high vol, close near bottom → <em>SELL</em></label></div>
+        <div class="field checkbox"><label><input type="checkbox" id="enable_sos" checked>
+          Sign of Strength (SOS) — wide up bar, high vol, close at top, breaks resistance → <em>BUY</em></label></div>
+        <div class="field checkbox"><label><input type="checkbox" id="enable_sow" checked>
+          Sign of Weakness (SOW) — wide down bar, high vol, close at bottom, breaks support → <em>SELL</em></label></div>
+
+        <div class="field checkbox" style="flex-basis:100%">
+          <label><input type="checkbox" id="long_only" checked> Long only (discard any SELL signal)</label>
+        </div>
+        <div class="field checkbox" style="flex-basis:100%">
+          <label><input type="checkbox" id="reverse_signals"> Reverse signals (flip direction of every signal)</label>
+        </div>
+      </div>
+
+      <!-- ── Risk ── -->
+      <div class="params-grid atr-grid">
+        <div class="field" style="flex-basis:100%"><strong style="color:var(--accent)">Risk / Stop Management</strong></div>
+        <div class="field checkbox" style="flex-basis:100%">
+          <label><input type="checkbox" id="use_atr_stops" checked> ATR-based SL/TP</label>
+        </div>
+        <div class="field"><label>ATR period</label><input type="number" id="atr_period" value="14" min="2" max="100"></div>
+        <div class="field"><label>SL = extreme ± (ATR ×)</label><input type="number" id="atr_sl_multiplier" value="2.0" step="0.1" min="0.1"></div>
+        <div class="field"><label>TP floor (ATR ×)</label><input type="number" id="atr_tp_multiplier" value="5.0" step="0.1" min="0.1"></div>
+        <div class="field"><label>Risk : Reward (R:R)</label><input type="number" id="risk_reward" value="2" step="0.1"></div>
+        <div class="field"><label>Fixed SL buffer (pips, non-ATR mode)</label><input type="number" id="sl_buffer_pips" value="3" step="0.5"></div>
+        <div class="field"><label>Fixed lot size</label><input type="number" id="fixed_volume" value="0.01" step="0.01" min="0"></div>
+        <div class="field"><label>Starting balance</label><input type="number" id="starting_balance" value="10000" step="100"></div>
+        <div class="field"><label>Playback speed (ms/bar)</label><input type="number" id="playback_ms_per_bar" value="120" step="10" min="0"></div>
+      </div>
+
+      <!-- ── Partial TP / Trailing ── -->
+      <div class="params-grid partial-grid">
+        <div class="field" style="flex-basis:100%"><strong style="color:var(--accent)">Partial TP &amp; Trailing</strong></div>
+        <div class="field checkbox" style="flex-basis:100%">
+          <label><input type="checkbox" id="enable_partial_tp" checked> Partial profit booking</label>
+        </div>
+        <div class="field"><label>Partial 1 at (R)</label><input type="number" id="partial1_r" value="1.0" step="0.1" min="0.1"></div>
+        <div class="field"><label>Partial 1 close %</label><input type="number" id="partial1_pct" value="50" step="5" min="1" max="100"></div>
+        <div class="field"><label>Partial 2 at (R)</label><input type="number" id="partial2_r" value="2.0" step="0.1" min="0.1"></div>
+        <div class="field"><label>Partial 2 close % <span style="opacity:0.6">(0 = off)</span></label><input type="number" id="partial2_pct" value="0" step="5" min="0" max="100"></div>
+        <div class="field checkbox" style="flex-basis:100%">
+          <label><input type="checkbox" id="enable_sl_trailing" checked> Breakeven + ATR trailing stop</label>
+        </div>
+        <div class="field"><label>Breakeven at (R)</label><input type="number" id="breakeven_at_r" value="1.0" step="0.1" min="0.1"></div>
+        <div class="field"><label>Trail starts at (R)</label><input type="number" id="trail_start_at_r" value="1.5" step="0.1" min="0.1"></div>
+        <div class="field"><label>Trail distance (ATR ×)</label><input type="number" id="trail_atr_multiplier" value="2.5" step="0.1" min="0.1"></div>
+      </div>
+
+      <!-- ── Filters ── -->
+      <div class="params-grid filters-grid">
+        <div class="field" style="flex-basis:100%"><strong style="color:var(--accent)">Optional Filters</strong></div>
+        <div class="field checkbox" style="flex-basis:100%">
+          <label><input type="checkbox" id="enable_ema_filter"> EMA trend filter — require close above EMA</label>
+        </div>
+        <div class="field"><label>EMA period</label><input type="number" id="ema_period" value="200" min="2" max="500"></div>
+        <div class="field checkbox" style="flex-basis:100%">
+          <label><input type="checkbox" id="enable_rsi_filter"> RSI filter — avoid buying overbought</label>
+        </div>
+        <div class="field"><label>RSI period</label><input type="number" id="rsi_period" value="14" min="2" max="100"></div>
+        <div class="field"><label>RSI max (require ≤)</label><input type="number" id="rsi_oversold_max" value="45" step="1" min="0" max="100"></div>
+        <div class="field checkbox" style="flex-basis:100%">
+          <label><input type="checkbox" id="enable_volume_filter"> Volume filter — require above-average bar volume</label>
+        </div>
+        <div class="field"><label>Volume × avg required</label><input type="number" id="volume_multiplier" value="1.3" step="0.1" min="0.1"></div>
+        <div class="field checkbox" style="flex-basis:100%">
+          <label><input type="checkbox" id="enable_htf_trend_filter" checked> HTF trend filter — trade must agree with higher-timeframe trend</label>
+        </div>
+        <div class="field"><label>HTF bucket (minutes)</label><input type="number" id="htf_minutes" value="60" min="5" max="1440"></div>
+        <div class="field"><label>HTF EMA period</label><input type="number" id="htf_ema_period" value="50" min="2" max="300"></div>
+      </div>
+    </details>
+
+    <button type="submit" id="run-btn">▶ Run Backtest</button>
+    <span id="status-msg"></span>
+  </form>
+</section>
+
+<section class="workspace">
+  <div class="chart-col">
+    <div id="chart" class="chart"></div>
+    <div id="equity-chart" class="chart equity"></div>
+  </div>
+
+  <aside class="side-col">
+    <div class="card">
+      <h3>Account</h3>
+      <div class="stat-row"><span>Equity</span><strong id="equity-val">—</strong></div>
+      <div class="stat-row"><span>Open PnL</span><strong id="open-pnl-val">—</strong></div>
+    </div>
+
+    <div class="card">
+      <h3>Open Trade</h3>
+      <div id="open-trade-panel" class="empty">No open trade</div>
+    </div>
+
+    <div class="card grow">
+      <h3>Trade Log</h3>
+      <div id="trade-log" class="trade-log"></div>
+    </div>
+  </aside>
+</section>
+
+<section id="report" class="report hidden">
+  <h2>Backtest Report</h2>
+  <div class="report-grid" id="report-grid"></div>
+</section>
+
+<script src="/static/js/app.js?v={{ asset_version }}"></script>
+{% endblock %}
